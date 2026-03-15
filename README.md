@@ -1,134 +1,99 @@
-# EduNova Codebase Status (March 2026)
+# EduNova
 
-EduNova is a multi-service EdTech monorepo with four active runtime components:
+## Project Overview
 
-- Frontend (Next.js, port 3000)
-- Tutor Engine (FastAPI, port 8000)
-- Retrieval Pipeline (FastAPI, port 8001)
-- App Backend / Auth and User Data API (FastAPI, port 8002)
+EduNova is a multi-service educational platform that provides grounded tutoring over user-uploaded course documents.
 
-The platform supports PDF-grounded tutoring, quiz and flashcard generation, concept explanations, and Supabase-backed user flows.
+The project uses a Retrieval-Augmented Generation (RAG) architecture:
 
-## Platform Concept
+1. Course PDFs are ingested and indexed by the Retrieval Pipeline.
+2. Relevant chunks are retrieved for each learner question.
+3. The Tutor Engine generates a response constrained by retrieved context.
+4. The response includes source references so answers remain inspectable.
 
-EduNova is designed as a grounded learning copilot, not a generic chatbot.
+This design reduces ungrounded responses and supports reproducible learning interactions.
 
-The core idea is simple: students should be able to study from their own course material and receive answers that stay anchored to those sources. Instead of producing confident but unverified responses, the platform prioritizes traceability, learning progression, and study reinforcement.
+## Key Features
 
-### Learning Philosophy
+- Grounded tutoring with source references (`file`, `page`, `chunk_id`, `score`).
+- Staged pedagogical flow: `guide`, `hint1`, `hint2`, `answer`.
+- Difficulty modes: `beginner`, `intermediate`, `exam`.
+- Study tools: quiz generation, flashcard generation, concept explanation.
+- Session memory and progress tracking for longitudinal learner context.
+- Supabase-backed authentication and user data persistence.
 
-- Retrieval-first tutoring: the model responds using indexed chunks from uploaded PDFs.
-- Pedagogical scaffolding: students can move through staged help (`guide` -> `hint1` -> `hint2` -> `answer`) rather than jumping directly to final answers.
-- Active recall by design: quiz and flashcard tools convert source material into practice artifacts.
-- Concept clarity over verbosity: concept explanations target understanding while still showing where information came from.
+## System Architecture
 
-### Product Experience Goal
+EduNova is split into four services with clear responsibilities:
 
-The platform aims to replicate the flow of a strong human tutor:
+- Frontend (`Next.js`, port `3000`): user interface and orchestration.
+- Tutor Engine (`FastAPI`, port `8000`): tutoring logic and generation workflows.
+- Retrieval Pipeline (`FastAPI`, port `8001`): ingestion, indexing, and retrieval.
+- App Backend (`FastAPI`, port `8002`): auth, document metadata, and chat persistence.
 
-1. Understand what the learner is asking.
-2. Use the learner's actual materials as the basis for explanation.
-3. Adjust response depth by learner level (`beginner`, `intermediate`, `exam`).
-4. Help the learner practice, not just consume explanations.
-5. Track progression signals (questions asked, hint usage, answer exposure, topic mastery trend).
+### Grounded Tutoring and RAG Behavior
 
-### Why the Architecture Looks This Way
+The tutoring path is retrieval-first. For each question, the Tutor Engine obtains relevant chunks from the Retrieval Pipeline and builds prompts from those chunks.
 
-- The Pipeline service isolates ingestion and retrieval, so source grounding can evolve independently.
-- The Tutor Engine owns pedagogy logic, generation style, study tools, and progress signals.
-- The App Backend handles identity, persistence, and user-scoped workflows through Supabase.
-- The Frontend orchestrates all of this into a single student journey.
+- If retrieval returns relevant context, tutoring and study-tool outputs are grounded and cite sources.
+- The pipeline supports scoped retrieval using `document_id`, `filename`, and `latest_only`.
+- By default, `latest_only=true` reduces cross-document contamination during local development and demos.
 
-This separation keeps responsibilities clear and makes the system easier to scale, test, and improve iteratively.
+## Repository Structure
 
-## 1) Repository Layout
-
-```
+```text
 edu-nova/
-  app_backend/        # User auth + documents/chats API (Supabase + forwarding)
-  frontend/           # Next.js application (student UI + tool panels)
-  pipeline/           # PDF ingestion + chunking + embeddings + retrieval
-  tutor_engine/       # Grounded tutor + study tools + progress/session state
-  data/               # Runtime data used by pipeline (uploads/state/chroma)
+  app_backend/      # Auth and user-facing API (Supabase integration)
+  frontend/         # Next.js client application
+  pipeline/         # PDF ingestion, chunking, embeddings, retrieval
+  tutor_engine/     # Tutoring workflows, study tools, progress tracking
+  data/             # Runtime data (uploads, state, local vector files)
 ```
 
-## 2) What Each Service Does
+## Services Description
 
-### Frontend (frontend, port 3000)
+### Frontend (port 3000)
 
-- Tech: Next.js 16, React 19, TypeScript, Tailwind 4, Framer Motion.
-- Main pages include landing, login/signup/verify, dashboard, and chat.
-- Uses a shared API client with three base URLs:
-  - `NEXT_PUBLIC_TUTOR_URL` (default `http://127.0.0.1:8000`)
-  - `NEXT_PUBLIC_PIPELINE_URL` (default `http://127.0.0.1:8001`)
-  - `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:8002`)
-- Includes backend health checks in UI for Pipeline and Tutor services.
+- Stack: Next.js 16, React 19, TypeScript, Tailwind 4.
+- Implements landing, authentication, dashboard, and chat/tool pages.
+- Uses environment-configurable backend base URLs.
 
-### Tutor Engine (tutor_engine, port 8000)
+### Tutor Engine (port 8000)
 
-- Provides grounded tutoring and study tools.
-- Endpoints:
-  - `GET /health`
-  - `POST /tutor`
-  - `POST /quiz`
-  - `POST /flashcards`
-  - `POST /concept/explain`
-  - `GET /progress`
-- Core behavior:
-  - Stage-based tutoring: `guide`, `hint1`, `hint2`, `answer`
-  - Difficulty levels: `beginner`, `intermediate`, `exam`
-  - Retrieval-backed responses with source metadata (`file`, `page`, `chunk_id`, `score`)
-  - Session memory persisted locally by `session_id`
-  - Progress tracking persisted locally
-- Integration detail:
-  - Retrieval client first tries `/retrieve`, then falls back to pipeline `/query` for compatibility.
-  - Ollama defaults to model `qwen2.5:3b`.
+- Endpoints: `GET /health`, `POST /tutor`, `POST /quiz`, `POST /flashcards`, `POST /concept/explain`, `GET /progress`.
+- Manages tutoring stages, difficulty-aware responses, and study-tool generation.
+- Stores session memory and progress summaries locally.
+- Calls Ollama for generation and Pipeline for retrieval.
 
-### Retrieval Pipeline (pipeline, port 8001)
+### Retrieval Pipeline (port 8001)
 
-- Responsible for document ingestion and retrieval.
-- Endpoints:
-  - `GET /health`
-  - `GET /status`
-  - `POST /upload`
-  - `POST /query`
-- Ingestion flow:
-  - Save uploaded PDF
-  - Extract page text
-  - Chunk content
-  - Create local embeddings (token-hash vectorization)
-  - Upsert into local vector index
-- Storage:
-  - Active document marker in `pipeline/data/state/latest_document.json`
-  - Vector index in `pipeline/data/state/vector_index.json`
-- Retrieval scope:
-  - Defaults to `latest_only=true`, which limits search to the latest uploaded document in current state.
+- Endpoints: `GET /health`, `GET /status`, `POST /upload`, `POST /query`.
+- Ingestion workflow: PDF save -> text extraction -> chunking -> embedding -> vector index upsert.
+- Maintains active document state in `pipeline/data/state/latest_document.json`.
 
-### App Backend (app_backend, port 8002)
+### App Backend (port 8002)
 
-- User-facing API layer for auth, document metadata, and chats.
-- Routers:
-  - `/auth` (signup, login, email verification, Google OAuth URL)
-  - `/documents` (upload forwarding to pipeline + document listing)
-  - `/chats` (chat session/message persistence + forwarding to tutor)
-- Relies on Supabase for:
-  - Auth token validation
-  - Data tables (documents, chat_sessions, messages)
+- Endpoints grouped under routers: `/auth`, `/documents`, `/chats`.
+- Integrates Supabase authentication and data tables.
+- Forwards uploads to the Pipeline and chat queries to the Tutor Engine.
 
-## 3) End-to-End Data Flow
+## Data Flow
 
-1. User uploads PDF from frontend.
-2. App Backend records document row in Supabase.
-3. App Backend forwards the PDF to Pipeline `/upload`.
-4. Pipeline indexes chunks and updates active/latest document state.
-5. User asks question from frontend chat/tools.
+1. User uploads a PDF from the frontend.
+2. App Backend creates document metadata in Supabase.
+3. App Backend forwards the file to Pipeline `/upload`.
+4. Pipeline indexes chunks and updates active document state.
+5. User asks a question in chat or study tools.
 6. Tutor Engine retrieves relevant chunks from Pipeline.
-7. Tutor Engine prompts Ollama and returns grounded output with sources.
-8. App Backend and Tutor Engine update chat/progress/session state where applicable.
+7. Tutor Engine generates a grounded response through Ollama.
+8. Frontend displays response content and source metadata.
+9. Progress and session artifacts are updated for later analysis.
 
-## 4) Runtime Contracts (Current)
+## API Contracts (example request/response)
 
-### Tutor request
+### Tutor API
+
+Request (`POST /tutor`):
 
 ```json
 {
@@ -140,7 +105,7 @@ edu-nova/
 }
 ```
 
-### Tutor response
+Response:
 
 ```json
 {
@@ -149,7 +114,7 @@ edu-nova/
     {
       "file": "chapter1.pdf",
       "page": 3,
-      "chunk_id": "...",
+      "chunk_id": "abc123_p3_c2",
       "score": 0.92
     }
   ],
@@ -161,7 +126,9 @@ edu-nova/
 }
 ```
 
-### Pipeline query request
+### Pipeline Query API
+
+Request (`POST /query`):
 
 ```json
 {
@@ -171,32 +138,57 @@ edu-nova/
 }
 ```
 
-## 5) Environment Variables
+Response shape:
 
-### app_backend
+```json
+{
+  "results": [
+    {
+      "id": "...",
+      "score": 0.81,
+      "text": "...",
+      "metadata": {
+        "filename": "...",
+        "page": 12,
+        "document_id": "...",
+        "chunk_index": 4
+      }
+    }
+  ]
+}
+```
+
+## Environment Variables
+
+### Frontend
+
+- `NEXT_PUBLIC_TUTOR_URL` (default: `http://127.0.0.1:8000`)
+- `NEXT_PUBLIC_PIPELINE_URL` (default: `http://127.0.0.1:8001`)
+- `NEXT_PUBLIC_API_URL` (default: `http://127.0.0.1:8002`)
+
+### Tutor Engine
+
+- `DOCUMENT_SERVICE_URL` (default: `http://127.0.0.1:8001`)
+- `DOCUMENT_SERVICE_TIMEOUT` (default: `10`)
+- `OLLAMA_BASE_URL` (default: `http://127.0.0.1:11434`)
+- `OLLAMA_MODEL` (default: `qwen2.5:3b`)
+- `OLLAMA_TIMEOUT` (default: `60`)
+
+### App Backend
 
 - `SUPABASE_URL`
 - `SUPABASE_KEY`
 
-### tutor_engine (optional overrides)
+## Local Development Setup
 
-- `DOCUMENT_SERVICE_URL` (default `http://127.0.0.1:8001`)
-- `DOCUMENT_SERVICE_TIMEOUT` (default `10` seconds)
-- `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`)
-- `OLLAMA_MODEL` (default `qwen2.5:3b`)
-- `OLLAMA_TIMEOUT` (default `60` seconds)
+### Prerequisites
 
-### frontend
+- Python 3.12+
+- Node.js 20+
+- npm
+- Ollama (optional but recommended for full tutor generation)
 
-- `NEXT_PUBLIC_TUTOR_URL`
-- `NEXT_PUBLIC_PIPELINE_URL`
-- `NEXT_PUBLIC_API_URL`
-
-## 6) Local Run (Windows)
-
-These commands reflect the current codebase and were validated in this workspace.
-
-### 1. Python environment and packages
+### Python Environment
 
 ```powershell
 python -m venv .venv
@@ -204,62 +196,77 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install fastapi uvicorn requests httpx pydantic python-dotenv supabase
 ```
 
-### 2. Start Tutor Engine (8000)
+### Frontend Dependencies
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn tutor_engine.main:app --host 127.0.0.1 --port 8000
+cd frontend
+npm install
+cd ..
 ```
 
-### 3. Start Pipeline (8001)
+## Running the Services
+
+Start each service in a separate terminal.
+
+### 1) Retrieval Pipeline (8001)
 
 ```powershell
 cd pipeline
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
 
-### 4. Start App Backend (8002)
+### 2) Tutor Engine (8000)
+
+```powershell
+cd ..
+.\.venv\Scripts\python.exe -m uvicorn tutor_engine.main:app --host 127.0.0.1 --port 8000
+```
+
+### 3) App Backend (8002)
 
 ```powershell
 cd app_backend
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8002
 ```
 
-### 5. Start Frontend (3000)
+### 4) Frontend (3000)
 
 ```powershell
 cd frontend
-npm install
 npm run dev
 ```
 
-### 6. Optional: start Ollama
+### 5) Optional: Ollama
 
 ```powershell
 ollama serve
 ollama pull qwen2.5:3b
 ```
 
-## 7) API Quick Links
+### Health Endpoints
 
-- Tutor docs: http://127.0.0.1:8000/docs
-- Pipeline docs: http://127.0.0.1:8001/docs
-- App backend root: http://127.0.0.1:8002/
-- Frontend: http://127.0.0.1:3000
+- Tutor Engine: `http://127.0.0.1:8000/health`
+- Retrieval Pipeline: `http://127.0.0.1:8001/health`
+- App Backend: `http://127.0.0.1:8002/`
+- Frontend: `http://127.0.0.1:3000`
 
-## 8) Current Notes and Known Integration Edges
+## Project Status / Roadmap
 
-- Tutor-to-pipeline retrieval compatibility is implemented (fallback from `/retrieve` to `/query`).
-- Pipeline defaults to latest-document retrieval to reduce stale cross-document responses.
-- App backend chat route currently expects an `answer` key from tutor responses, while Tutor Engine returns `response` as the primary text field.
-- Supabase credentials are required for auth/documents/chats routes in app_backend.
+### Current Status
 
-## 9) Current Maturity Snapshot
+- Core RAG tutoring workflow is implemented and runnable locally.
+- Study tools (quiz, flashcards, concept explanation) are integrated.
+- Frontend, retrieval, tutoring, and auth/data layers are separated by service.
 
-The repository is beyond a single MVP backend and now acts as a full local development stack with:
+### Known Integration Notes
 
-- a modern frontend experience,
-- a dedicated API gateway/backend for user data,
-- a standalone retrieval service,
-- and a tutoring engine with study tooling and progress tracking.
+- Retrieval client supports compatibility fallback from `/retrieve` to `/query`.
+- App Backend chat integration currently expects `answer` while Tutor Engine returns `response`; contract alignment is pending.
+- Supabase credentials are required for authenticated backend routes.
 
-Most functionality is runnable locally; the remaining production-hardening work is primarily around packaging dependencies, standardizing response contracts between services, and adding automated integration tests.
+### Roadmap
+
+- Standardize response contracts across all services.
+- Add end-to-end integration and regression tests.
+- Improve packaging of Python dependencies with locked requirements.
+- Expand observability (structured logs, request tracing, service health diagnostics).
