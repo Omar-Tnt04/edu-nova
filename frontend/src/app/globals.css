@@ -42,7 +42,8 @@
 }
 
 .animate-enter {
-    opacity: 0;
+    opacity: 1;
+    animation: softEnter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
     animation-fill-mode: both;
     will-change: transform, opacity, filter;
 }

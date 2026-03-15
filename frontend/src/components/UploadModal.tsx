@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { X, UploadCloud, File, AlertTriangle, CheckCircle2, Loader2, FileText, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { fetchApi } from "@/lib/api";
+import { uploadPdf } from "@/lib/api";
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -46,18 +46,8 @@ export function UploadModal({ isOpen, onClose, onUploadSuccess }: UploadModalPro
       setProgress(p => Math.min(p + 10, 90));
     }, 500);
 
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
-      const res = await fetchApi("/upload", {
-        method: "POST",
-        body: formData,
-        // Let browser set the proper Form-Data boundaries, do not set Content-Type header manually here
-        headers: {
-            "Content-Type": "undefined" // Will be stripped/ignored appropriately by fetch, or omitted entirely in actual implementation if handled correctly
-        }
-      });
+      const res = await uploadPdf(file);
       
       clearInterval(interval);
       setProgress(100);
@@ -112,12 +102,12 @@ export function UploadModal({ isOpen, onClose, onUploadSuccess }: UploadModalPro
                   
                   <div className="flex gap-6 p-4 rounded-xl bg-gray-900 border border-gray-800 w-full justify-center">
                     <div className="text-center">
-                      <p className="text-2xl font-bold text-white">{result?.pages_processed || 0}</p>
+                      <p className="text-2xl font-bold text-white">{result?.pages || 0}</p>
                       <p className="text-xs text-gray-500 uppercase font-medium">Pages</p>
                     </div>
                     <div className="w-px bg-gray-800"></div>
                     <div className="text-center">
-                      <p className="text-2xl font-bold text-white">{result?.chunks_indexed || 0}</p>
+                      <p className="text-2xl font-bold text-white">{result?.chunks || 0}</p>
                       <p className="text-xs text-gray-500 uppercase font-medium">Chunks</p>
                     </div>
                   </div>

@@ -2,7 +2,8 @@ import {
   MessageSquare, 
   BrainCircuit, 
   Layers, 
-  Lightbulb 
+  Lightbulb,
+  Activity
 } from "lucide-react";
 
 interface StudioSidebarProps {
@@ -16,6 +17,7 @@ export function StudioSidebar({ activeTool, setActiveTool }: StudioSidebarProps)
     { id: "quiz", label: "Quiz Builder", icon: <BrainCircuit size={18} /> },
     { id: "flashcards", label: "Flashcards", icon: <Layers size={18} /> },
     { id: "concept", label: "Explain Concept", icon: <Lightbulb size={18} /> },
+    { id: "progress", label: "Progress", icon: <Activity size={18} /> },
   ];
 
   return (

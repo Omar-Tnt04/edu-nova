@@ -3,6 +3,7 @@ import json
 from uuid import uuid4
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.chunk_service import chunk_text
 from app.embedding_service import embed_texts, embed_query
@@ -18,9 +19,24 @@ STATE_DIR = BASE_DIR / "data" / "state"
 LATEST_DOC_FILE = STATE_DIR / "latest_document.json"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 STATE_DIR.mkdir(parents=True, exist_ok=True)
+ACTIVE_DOCUMENT_ID: str | None = None
+ACTIVE_DOCUMENT_FILENAME: str | None = None
 
 
 app = FastAPI(title="Pipeline Service")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def _write_latest_document(document_id: str, filename: str) -> None:
@@ -49,9 +65,19 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/status")
+def status():
+    return {
+        "has_active_document": ACTIVE_DOCUMENT_ID is not None,
+        "active_document_id": ACTIVE_DOCUMENT_ID,
+        "active_filename": ACTIVE_DOCUMENT_FILENAME,
+    }
+
+
 # Upload and index a PDF
 @app.post("/upload", response_model=UploadResponse)
 async def upload_pdf(file: UploadFile = File(...)):
+    global ACTIVE_DOCUMENT_ID, ACTIVE_DOCUMENT_FILENAME
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
@@ -105,6 +131,8 @@ async def upload_pdf(file: UploadFile = File(...)):
         )
 
     _write_latest_document(document_id=document_id, filename=file.filename)
+    ACTIVE_DOCUMENT_ID = document_id
+    ACTIVE_DOCUMENT_FILENAME = file.filename
 
     return UploadResponse(
         filename=file.filename,
@@ -126,9 +154,11 @@ def query_documents(request: QueryRequest):
     elif request.filename:
         where = {"filename": request.filename}
     elif request.latest_only:
-        latest_doc_id = _read_latest_document_id()
+        latest_doc_id = ACTIVE_DOCUMENT_ID
         if latest_doc_id:
             where = {"document_id": latest_doc_id}
+        else:
+            return {"results": []}
 
     results = search(
         query_embedding=query_vector,
@@ -155,9 +185,12 @@ def query_documents(request: QueryRequest):
     # Format response
     for chunk_id, text, distance, metadata in zip(ids, documents, distances, metadatas):
         metadata = metadata or {}
+        # Convert distance metric into normalized relevance score in [0, 1].
+        raw_distance = float(distance) if distance is not None else 1.0
+        relevance_score = max(0.0, min(1.0, 1.0 - raw_distance))
         formatted_results.append({
             "id": chunk_id,
-            "score": float(distance) if distance is not None else 0.0,
+            "score": relevance_score,
             "text": text,
             "metadata": {
                 "filename": metadata.get("filename"),

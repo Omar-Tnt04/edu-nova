@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from .learning_state import ProgressTrackerService, SessionMemoryService
 from .models import (
@@ -23,6 +24,19 @@ from .study_tools_service import StudyToolsService
 from .tutor_service import TutorService
 
 app = FastAPI(title="Tutor Engine", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 retrieval_client = RetrievalClient()
 ollama_client = OllamaClient()

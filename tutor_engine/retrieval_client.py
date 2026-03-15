@@ -39,7 +39,7 @@ class RetrievalClient:
                 # Compatibility fallback for document services that expose /query.
                 response = self.session.post(
                     f"{self.base_url}/query",
-                    json={"text": question, "top_k": self.top_k},
+                    json={"text": question, "top_k": self.top_k, "latest_only": True},
                     timeout=self.timeout,
                 )
 

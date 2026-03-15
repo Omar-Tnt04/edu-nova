@@ -1,5 +1,6 @@
 import { Plus, FileText, CheckCircle2, Loader2, LogOut } from "lucide-react";
 import Link from "next/link";
+import { BackendStatus } from "@/components/BackendStatus";
 
 interface Document {
   id: string;
@@ -35,6 +36,8 @@ export function SourcesSidebar({ documents, onOpenUpload }: SourcesSidebarProps)
           Add Source
         </button>
       </div>
+
+      <BackendStatus />
 
       <div className="flex-1 overflow-y-auto p-5 space-y-4 relative z-10">
         <div>

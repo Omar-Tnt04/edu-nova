@@ -1,15 +1,19 @@
 # ==============================
-# Root .gitignore for edu-nova
-# Covers both frontend and backend
+# EduNova Root .gitignore
+# Next.js + FastAPI + AI pipeline
 # ==============================
 
-# ---------- OS ----------
+# --------------------------------------------------
+# OS Files
+# --------------------------------------------------
 .DS_Store
 Thumbs.db
 ehthumbs.db
 Desktop.ini
 
-# ---------- IDE / Editor ----------
+# --------------------------------------------------
+# IDE / Editor
+# --------------------------------------------------
 .vscode/
 .idea/
 *.swp
@@ -19,69 +23,127 @@ Desktop.ini
 .classpath
 .settings/
 
-# ---------- Python (Backend) ----------
+# --------------------------------------------------
+# Python
+# --------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-venv/
-.env
-.venv/
-env/
-ENV/
-*.egg-info/
-*.egg
-dist/
-build/
-*.whl
-pip-log.txt
-pip-delete-this-directory.txt
 .Python
+*.egg
+*.egg-info/
+*.whl
 *.manifest
 *.spec
 
-# ---------- Node / Next.js (Frontend) ----------
+# Python environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python cache
+.pip-cache/
+.pytest_cache/
+.mypy_cache/
+
+# Build artifacts
+build/
+dist/
+
+# --------------------------------------------------
+# Node / Next.js
+# --------------------------------------------------
 node_modules/
 .next/
 out/
 .pnp
 .pnp.*
+.pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+next-env.d.ts
+
+# Yarn
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-*.tsbuildinfo
-next-env.d.ts
 
-# ---------- Build / Logs ----------
-*.log
-build_output.log
-/coverage/
-
-# ---------- Environment Variables ----------
+# --------------------------------------------------
+# Environment Variables
+# --------------------------------------------------
 .env
 .env.local
 .env.development.local
 .env.test.local
-.env.production.local
 .env.production
-# Keep .env.example files (they contain no secrets)
+.env.production.local
+
+# keep example env files
 !.env.example
 
-# ---------- Keys / Certificates ----------
+# --------------------------------------------------
+# Logs / Coverage
+# --------------------------------------------------
+*.log
+build_output.log
+coverage/
+
+# --------------------------------------------------
+# Certificates / Keys
+# --------------------------------------------------
 *.pem
 *.key
 *.crt
 
-# ---------- Vercel ----------
-.vercel
+# --------------------------------------------------
+# Runtime Data (AI / Retrieval)
+# --------------------------------------------------
 
-# ---------- Misc ----------
+# vector databases
+pipeline/data/
+tutor_engine/data/
+
+# chroma / embeddings
+chroma/
+vector_index/
+
+# uploaded PDFs
+uploads/
+
+# session state
+state/
+
+# --------------------------------------------------
+# Temporary files
+# --------------------------------------------------
 *.bak
 *.tmp
 *.temp
+.tmp/
+.cache/
+
+# --------------------------------------------------
+# Installers / binaries
+# --------------------------------------------------
+*.exe
+*.msi
+*.dmg
+*.pkg
+
+# --------------------------------------------------
+# Vercel
+# --------------------------------------------------
+.vercel/
+
+# --------------------------------------------------
+# Misc
+# --------------------------------------------------
+*.sqlite
+*.db
+*.DS_Store

@@ -1,54 +1,98 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { BrainCircuit, Play, CheckCircle2, XCircle, Award, Loader2, RefreshCw, X, ArrowRight, Lightbulb, AlertCircle } from 'lucide-react';
-import { fetchApi } from '@/lib/api';
+import { generateQuiz, QuizQuestion, SourceItem } from '@/lib/api';
 
-export function QuizTool() {
+interface QuizToolProps {
+  sessionId: string;
+  demoTopic?: string;
+  demoDifficulty?: "beginner" | "intermediate" | "exam";
+  demoRunId?: number;
+}
+
+export function QuizTool({ sessionId, demoTopic, demoDifficulty, demoRunId = 0 }: QuizToolProps) {
   const [topic, setTopic] = useState("");
-  const [difficulty, setDifficulty] = useState("beginner");
+  const [difficulty, setDifficulty] = useState<"beginner" | "intermediate" | "exam">("beginner");
   const [count, setCount] = useState(3);
   const [loading, setLoading] = useState(false);
   const [quizData, setQuizData] = useState<any>(null);
   const [error, setError] = useState("");
-  const [answers, setAnswers] = useState<Record<number, string>>({});
-  const [submitted, setSubmitted] = useState(false);
   const [quizState, setQuizState] = useState('setup'); // 'setup', 'playing', 'review'
-  const [questions, setQuestions] = useState<any[]>([]);
+  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string>>({});
   const [score, setScore] = useState(0);
 
+  const handleCountChange = (value: string) => {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) {
+      setCount(1);
+      return;
+    }
+    setCount(Math.max(1, Math.min(10, parsed)));
+  };
 
-  const handleGenerate = async () => {
-    if (!topic) return;
+
+  const runGenerate = useCallback(async (
+    topicValue: string,
+    difficultyValue: "beginner" | "intermediate" | "exam",
+    countValue: number
+  ) => {
+    if (!topicValue) return;
     setLoading(true);
     setError("");
     setQuizData(null);
-    setAnswers({});
-    setSubmitted(false);
     setQuizState('playing'); // Set quiz state to playing after generation
     setCurrentQuestionIndex(0);
     setSelectedAnswers({});
     setScore(0);
 
     try {
-      const res = await fetchApi("/quiz", {
-        method: "POST",
-        body: JSON.stringify({
-          topic,
-          difficulty,
-          question_count: count,
-          chat_session_id: "quiz-session-1" // Mock
-        })
+      const res = await generateQuiz({
+        topic: topicValue,
+        difficulty: difficultyValue,
+        count: countValue,
+        session_id: sessionId,
       });
+
+      const responseQuestions = Array.isArray(res.questions)
+        ? res.questions
+        : Array.isArray(res.quiz)
+          ? res.quiz
+          : [];
+
+      if (responseQuestions.length === 0) {
+        setError("No quiz items were returned for this topic. Try another topic or upload more source material.");
+        setQuizState("setup");
+        return;
+      }
+
       setQuizData(res);
-      setQuestions(res.quiz); // Assuming res.quiz contains the array of questions
+      setQuestions(responseQuestions);
     } catch (err: any) {
       setError(err.message || "Failed to generate quiz.");
       setQuizState('setup'); // Go back to setup on error
     } finally {
       setLoading(false);
     }
+  }, [sessionId]);
+
+  const handleGenerate = async () => {
+    if (!topic) return;
+    await runGenerate(topic, difficulty, count);
   };
+
+  useEffect(() => {
+    if (!demoRunId || !demoTopic) {
+      return;
+    }
+
+    const demoCount = 3;
+    const resolvedDifficulty = demoDifficulty || "beginner";
+    setTopic(demoTopic);
+    setDifficulty(resolvedDifficulty);
+    setCount(demoCount);
+    void runGenerate(demoTopic, resolvedDifficulty, demoCount);
+  }, [demoRunId, demoTopic, demoDifficulty, runGenerate]);
 
   const calculateScore = () => {
     let currentScore = 0;
@@ -81,21 +125,21 @@ export function QuizTool() {
   const currentQuestion = questions[currentQuestionIndex];
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-transparent overflow-y-auto">
+    <div className="flex-1 flex flex-col h-full min-h-0 bg-transparent overflow-hidden">
       {/* Config Panel */}
       <div className="p-6 border-b border-white/5 bg-[#050505]/40 backdrop-blur-xl shrink-0 relative z-20 overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-900/10 via-transparent to-transparent pointer-events-none"></div>
-        
+
         <h2 className="text-xl font-medium flex items-center gap-3 text-white mb-6 font-display tracking-tight">
           <BrainCircuit className="text-blue-500/80" strokeWidth={1.5} />
           Quiz Generator
         </h2>
-        
+
         <div className="flex flex-wrap items-end gap-4 max-w-4xl">
           <div className="space-y-1.5 flex-1 min-w-[200px]">
-                    <label className="text-[10px] font-semibold text-neutral-500 uppercase tracking-[0.2em] font-mono">Topic</label>
-            <input 
-              type="text" 
+            <label className="text-[10px] font-semibold text-neutral-500 uppercase tracking-[0.2em] font-mono">Topic</label>
+            <input
+              type="text"
               placeholder="e.g. Photosynthesis"
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
@@ -104,27 +148,27 @@ export function QuizTool() {
           </div>
           <div className="space-y-1.5 w-40">
             <label className="text-[10px] font-semibold text-neutral-500 uppercase tracking-[0.2em] font-mono">Difficulty</label>
-            <select 
+            <select
               value={difficulty}
-              onChange={(e) => setDifficulty(e.target.value)}
+              onChange={(e) => setDifficulty(e.target.value as "beginner" | "intermediate" | "exam")}
               className="w-full bg-black/40 border border-white/10 rounded-sm px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors text-white appearance-none"
             >
               <option value="beginner">Beginner</option>
               <option value="intermediate">Intermediate</option>
-              <option value="expert">Expert</option>
+              <option value="exam">Exam</option>
             </select>
           </div>
           <div className="space-y-1.5 w-32">
             <label className="text-[10px] font-semibold text-neutral-500 uppercase tracking-[0.2em] font-mono">Questions</label>
-            <input 
-              type="number" 
+            <input
+              type="number"
               min={1} max={10}
               value={count}
-              onChange={(e) => setCount(parseInt(e.target.value))}
+              onChange={(e) => handleCountChange(e.target.value)}
               className="w-full bg-black/40 border border-white/10 rounded-sm px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors text-white"
             />
           </div>
-          <button 
+          <button
             onClick={handleGenerate}
             disabled={!topic || loading || quizState !== 'setup'}
             className="btn-hover-effect bg-white text-black px-8 py-2.5 rounded-sm text-xs font-semibold tracking-widest uppercase flex items-center gap-2 transition-all disabled:opacity-50 h-[42px]"
@@ -136,7 +180,7 @@ export function QuizTool() {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 p-6 md:p-8 flex flex-col items-center overflow-hidden relative z-10 w-full max-w-4xl mx-auto">
+      <div className="flex-1 min-h-0 p-6 md:p-8 flex flex-col items-center overflow-y-auto relative z-10 w-full max-w-4xl mx-auto">
         {error && (
           <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-lg mb-6 w-full">
             <AlertCircle size={18} className="inline-block mr-2 -mt-0.5" />
@@ -145,20 +189,20 @@ export function QuizTool() {
         )}
 
         {quizState === 'setup' && !loading && (
-           <div className="flex flex-col items-center justify-center text-center opacity-40 mt-20">
-             <BrainCircuit size={64} className="text-neutral-600 mb-6" strokeWidth={1} />
-             <h3 className="text-xl font-normal text-white mb-2 font-display">Knowledge Check</h3>
-             <p className="text-neutral-500 max-w-sm font-light">Generate a custom test based purely on the documents currently indexed in your knowledge base.</p>
-           </div>
+          <div className="flex flex-col items-center justify-center text-center opacity-40 mt-20">
+            <BrainCircuit size={64} className="text-neutral-600 mb-6" strokeWidth={1} />
+            <h3 className="text-xl font-normal text-white mb-2 font-display">Knowledge Check</h3>
+            <p className="text-neutral-500 max-w-sm font-light">Generate a custom test based purely on the documents currently indexed in your knowledge base.</p>
+          </div>
         )}
 
         {loading && (
           <div className="flex flex-col items-center justify-center animate-enter mt-20">
-             <div className="relative">
-               <div className="w-16 h-16 rounded-full border border-white/10"></div>
-               <div className="w-16 h-16 rounded-full border border-blue-500 border-t-transparent animate-spin absolute inset-0"></div>
-             </div>
-             <p className="text-neutral-400 mt-6 font-medium animate-pulse tracking-widest uppercase text-xs">Synthesizing Questions...</p>
+            <div className="relative">
+              <div className="w-16 h-16 rounded-full border border-white/10"></div>
+              <div className="w-16 h-16 rounded-full border border-blue-500 border-t-transparent animate-spin absolute inset-0"></div>
+            </div>
+            <p className="text-neutral-400 mt-6 font-medium animate-pulse tracking-widest uppercase text-xs">Synthesizing Questions...</p>
           </div>
         )}
 
@@ -166,7 +210,7 @@ export function QuizTool() {
           <div className="w-full max-w-2xl bg-[#0a0a0a] border border-white/10 rounded-xl overflow-hidden shadow-2xl animate-enter">
             {/* Progress Bar */}
             <div className="bg-white/5 h-1.5 w-full">
-              <div 
+              <div
                 className="h-full bg-blue-500 transition-all duration-300"
                 style={{ width: `${((currentQuestionIndex) / questions.length) * 100}%` }}
               />
@@ -187,21 +231,19 @@ export function QuizTool() {
               </h3>
 
               <div className="space-y-3">
-                {currentQuestion.options.map((opt: string, idx: number) => {
+                {(Array.isArray(currentQuestion.choices) ? currentQuestion.choices : currentQuestion.options || []).map((opt: string, idx: number) => {
                   const isSelected = selectedAnswers[currentQuestionIndex] === opt;
                   return (
                     <button
                       key={idx}
                       onClick={() => handleSelect(opt)}
-                      className={`w-full text-left p-4 rounded-lg border transition-all duration-300 flex items-start gap-4 group ${
-                        isSelected 
-                          ? "bg-blue-500/10 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.1)]" 
+                      className={`w-full text-left p-4 rounded-lg border transition-all duration-300 flex items-start gap-4 group ${isSelected
+                          ? "bg-blue-500/10 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.1)]"
                           : "bg-[#111] border-white/5 hover:border-white/20 hover:bg-[#161616]"
-                      }`}
+                        }`}
                     >
-                      <div className={`shrink-0 w-6 h-6 rounded-full border flex items-center justify-center mt-0.5 transition-colors ${
-                        isSelected ? "border-blue-500 text-blue-400" : "border-neutral-600 text-transparent group-hover:border-neutral-400"
-                      }`}>
+                      <div className={`shrink-0 w-6 h-6 rounded-full border flex items-center justify-center mt-0.5 transition-colors ${isSelected ? "border-blue-500 text-blue-400" : "border-neutral-600 text-transparent group-hover:border-neutral-400"
+                        }`}>
                         <CheckCircle2 size={14} />
                       </div>
                       <span className={`text-base leading-relaxed ${isSelected ? "text-white" : "text-neutral-300"}`}>
@@ -221,7 +263,7 @@ export function QuizTool() {
               >
                 Previous
               </button>
-              
+
               <button
                 onClick={handleNext}
                 disabled={!selectedAnswers[currentQuestionIndex]}
@@ -235,61 +277,79 @@ export function QuizTool() {
         )}
 
         {quizState === 'review' && (
-          <div className="w-full max-w-3xl animate-enter mb-10 pb-10">
+          <div className="w-full max-w-3xl animate-enter mb-10 pb-20">
             <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-8 mb-8 text-center shadow-2xl relative overflow-hidden">
-               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-emerald-500 to-amber-500"></div>
-               <Award size={48} className="mx-auto text-blue-500 mb-4" strokeWidth={1} />
-               <h2 className="text-3xl font-normal text-white mb-2 font-display">Quiz Complete</h2>
-               <p className="text-neutral-400 mb-6 font-light">Score: <span className="text-2xl text-white font-medium ml-2">{score} / {questions.length}</span></p>
-               
-               <button 
-                  onClick={() => setQuizState('setup')}
-                  className="btn-hover-effect bg-white text-black px-8 py-2.5 rounded-sm font-semibold text-xs tracking-widest uppercase inline-flex items-center gap-2"
-               >
-                 <RefreshCw size={16} /> New Quiz
-               </button>
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-emerald-500 to-amber-500"></div>
+              <Award size={48} className="mx-auto text-blue-500 mb-4" strokeWidth={1} />
+              <h2 className="text-3xl font-normal text-white mb-2 font-display">Quiz Complete</h2>
+              <p className="text-neutral-400 mb-6 font-light">Score: <span className="text-2xl text-white font-medium ml-2">{score} / {questions.length}</span></p>
+
+              <button
+                onClick={() => setQuizState('setup')}
+                className="btn-hover-effect bg-white text-black px-8 py-2.5 rounded-sm font-semibold text-xs tracking-widest uppercase inline-flex items-center gap-2"
+              >
+                <RefreshCw size={16} /> New Quiz
+              </button>
             </div>
 
             <div className="space-y-6">
               {questions.map((q, idx) => {
                 const isCorrect = selectedAnswers[idx] === q.correct_answer;
                 return (
-                  <div key={idx} className={`border rounded-xl p-6 relative overflow-hidden ${
-                    isCorrect ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"
-                  }`}>
+                  <div key={idx} className={`border rounded-xl p-6 relative overflow-hidden ${isCorrect ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"
+                    }`}>
                     {/* Minimal decorative line indicator */}
                     <div className={`absolute left-0 top-0 bottom-0 w-1 ${isCorrect ? "bg-emerald-500" : "bg-red-500"}`}></div>
 
                     <div className="flex items-start gap-4 ml-2">
-                       <div className="mt-1 shrink-0">
-                          {isCorrect ? <CheckCircle2 className="text-emerald-500" /> : <XCircle className="text-red-500" />}
-                       </div>
-                       <div>
-                         <p className="text-lg text-white mb-4 leading-relaxed font-normal">{q.question}</p>
-                         
-                         <div className="space-y-2 mb-4">
-                            <div className="text-sm">
-                               <span className="text-neutral-500 font-mono text-[10px] uppercase tracking-widest mr-2">Your Answer:</span>
-                               <span className={isCorrect ? "text-emerald-400" : "text-red-400"}>{selectedAnswers[idx]}</span>
-                            </div>
-                            {!isCorrect && (
-                               <div className="text-sm">
-                                  <span className="text-neutral-500 font-mono text-[10px] uppercase tracking-widest mr-2">Correct Answer:</span>
-                                  <span className="text-emerald-400">{q.correct_answer}</span>
-                               </div>
-                            )}
-                         </div>
+                      <div className="mt-1 shrink-0">
+                        {isCorrect ? <CheckCircle2 className="text-emerald-500" /> : <XCircle className="text-red-500" />}
+                      </div>
+                      <div>
+                        <p className="text-lg text-white mb-4 leading-relaxed font-normal">{q.question}</p>
 
-                         <div className="bg-black/30 border border-white/5 rounded-lg p-4 backdrop-blur-sm">
-                            <p className="text-xs text-neutral-500 font-mono uppercase tracking-widest mb-2 flex items-center gap-2"><Lightbulb size={12} className="text-amber-500"/> Explanation</p>
-                            <p className="text-sm text-neutral-300 leading-relaxed font-light">{q.explanation}</p>
-                         </div>
-                       </div>
+                        <div className="space-y-2 mb-4">
+                          <div className="text-sm">
+                            <span className="text-neutral-500 font-mono text-[10px] uppercase tracking-widest mr-2">Your Answer:</span>
+                            <span className={isCorrect ? "text-emerald-400" : "text-red-400"}>{selectedAnswers[idx]}</span>
+                          </div>
+                          {!isCorrect && (
+                            <div className="text-sm">
+                              <span className="text-neutral-500 font-mono text-[10px] uppercase tracking-widest mr-2">Correct Answer:</span>
+                              <span className="text-emerald-400">{q.correct_answer}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="bg-black/30 border border-white/5 rounded-lg p-4 backdrop-blur-sm">
+                          <p className="text-xs text-neutral-500 font-mono uppercase tracking-widest mb-2 flex items-center gap-2"><Lightbulb size={12} className="text-amber-500" /> Explanation</p>
+                          <p className="text-sm text-neutral-300 leading-relaxed font-light">{q.explanation || "No explanation provided."}</p>
+                        </div>
+
+                        {Array.isArray(q.sources) && q.sources.length > 0 && (
+                          <div className="mt-3 p-3 bg-black/30 border border-white/5 rounded-lg">
+                            <p className="text-xs text-neutral-500 font-mono uppercase tracking-widest mb-2">Sources</p>
+                            <div className="space-y-1.5">
+                              {q.sources.map((source: SourceItem, sourceIdx: number) => (
+                                <div key={`${source.file || "source"}-${sourceIdx}`} className="text-xs text-neutral-400 flex flex-wrap gap-3">
+                                  <span>Page: {source.page ?? "-"}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
+
+            {quizData && (
+              <div className="mt-6 text-center text-xs text-neutral-500 uppercase tracking-[0.2em] font-mono">
+                grounded: {quizData.grounded ? "yes" : "no"} | difficulty: {quizData.difficulty || difficulty} | session: {(quizData.session_id || sessionId).slice(0, 8)}...
+              </div>
+            )}
           </div>
         )}
       </div>
